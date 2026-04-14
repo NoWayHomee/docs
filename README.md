@@ -7,6 +7,10 @@ Tài liệu này cung cấp cái nhìn tổng thể về thiết kế của hệ
 
 ---
 
+- 📅 **[NHẬT KÝ ĐỒ ÁN (PROJECT LOG)](https://drive.google.com/drive/folders/1pZyBHOuhf49qzH8Vw7Kwgocv-muJhbqq)**
+
+---
+
 ## 📊 1. Thiết Kế Cơ Sở Dữ Liệu (Database Design)
 
 Mô hình thực thể kết nối (ERD) thể hiện cấu trúc lưu trữ, các bảng dữ liệu (MySQL) và mối quan hệ giữa các thực thể cốt lõi trong hệ thống.

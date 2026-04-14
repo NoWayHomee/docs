@@ -109,4 +109,4 @@ Phân hệ dành cho ban quản trị hệ thống NoWayHome để kiểm duyệ
 
 ---
 
-**NoWayHome Project** - _Senior Technical Consultant Verified_ ✅
+**NoWayHome Project** - _Senior Technical Consultant Verified_ 

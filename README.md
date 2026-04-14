@@ -107,7 +107,7 @@ Phân hệ dành cho ban quản trị hệ thống NoWayHome để kiểm duyệ
 
 Để hỗ trợ việc tra cứu nhanh cấu trúc bảng và các ràng buộc dữ liệu mà không cần truy cập vào hệ quản trị CSDL, nhóm đã triển khai giao diện tra cứu trực tuyến (Read-only):
 
-> ### 🖥️ **[Xem Database web](https://nowayhomedb.tiiny.site/)**
+> ### 🖥️ **[Xem Database web]([nowayhomedb.netlify.app](https://nowayhomedb.netlify.app/))**
 >
 > _(Giao diện hỗ trợ tra cứu nhanh định nghĩa các bảng, kiểu dữ liệu và mối quan hệ thực thể)_
 

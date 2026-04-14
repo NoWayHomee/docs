@@ -96,3 +96,17 @@ Phân hệ dành cho ban quản trị hệ thống NoWayHome để kiểm duyệ
 ![Luồng tuần tự Admin](diagrams/Luồng%20Admin.png)
 
 > 🔗 [Mở Luồng Admin trên draw.io](https://viewer.diagrams.net/?tags=%7B%7D&lightbox=1&highlight=0000ff&edit=_blank&layers=1&nav=0&page=5&title=NoWayHome.drawio&dark=auto#Uhttps%3A%2F%2Fdrive.google.com%2Fuc%3Fid%3D1E2XdDDvcfCm3aD3TmFTymMHeSQF2c1DT%26export%3Ddownload)
+
+---
+
+## 🔗 6. Tài liệu kỹ thuật trực tuyến (Interactive Documentation)
+
+Để hỗ trợ việc tra cứu nhanh cấu trúc bảng và các ràng buộc dữ liệu mà không cần truy cập vào hệ quản trị CSDL, nhóm đã triển khai giao diện tra cứu trực tuyến (Read-only):
+
+> ### 🖥️ **[Xem Database web](https://nowayhomedb.tiiny.site/)**
+>
+> _(Giao diện hỗ trợ tra cứu nhanh định nghĩa các bảng, kiểu dữ liệu và mối quan hệ thực thể)_
+
+---
+
+**NoWayHome Project** - _Senior Technical Consultant Verified_ ✅

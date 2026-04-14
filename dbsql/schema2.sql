@@ -558,3 +558,107 @@ CREATE TABLE loyalty_points (
   KEY idx_lp_user (user_id),
   CONSTRAINT fk_lp_user FOREIGN KEY (user_id) REFERENCES users (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE voucher_usages (
+  id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  voucher_id       BIGINT UNSIGNED NOT NULL,
+  user_id          BIGINT UNSIGNED NOT NULL,
+  booking_id       BIGINT UNSIGNED NOT NULL,
+  discount_applied DECIMAL(12,2)   NOT NULL,
+  used_at          DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_at       DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_vu_voucher_booking (voucher_id, booking_id),
+  KEY idx_vu_user    (user_id),
+  KEY idx_vu_voucher (voucher_id, user_id), -- enforce max_uses_per_user check
+  CONSTRAINT fk_vu_voucher FOREIGN KEY (voucher_id) REFERENCES vouchers  (id),
+  CONSTRAINT fk_vu_user    FOREIGN KEY (user_id)    REFERENCES users     (id),
+  CONSTRAINT fk_vu_booking FOREIGN KEY (booking_id) REFERENCES bookings  (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE platform_fee_configs (
+  id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name           VARCHAR(200)    NOT NULL,
+  fee_type       ENUM('percent','fixed') NOT NULL,
+  fee_value      DECIMAL(8,4)    NOT NULL,
+  applies_to     ENUM('all','property_type','partner_tier','country') NOT NULL DEFAULT 'all',
+  applies_value  VARCHAR(100)    DEFAULT NULL, -- 'hotel', 'gold', 'VN'
+  min_fee        DECIMAL(12,2)   DEFAULT NULL,
+  max_fee        DECIMAL(12,2)   DEFAULT NULL,
+  effective_from DATE            NOT NULL,
+  effective_to   DATE            DEFAULT NULL,
+  is_active      TINYINT(1)      NOT NULL DEFAULT 1,
+  created_by     BIGINT UNSIGNED NOT NULL,
+  created_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_pfc_active_date (is_active, effective_from, effective_to),
+  KEY idx_pfc_applies     (applies_to, applies_value),
+  CONSTRAINT fk_pfc_creator FOREIGN KEY (created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE booking_fees (
+  id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  booking_id     BIGINT UNSIGNED NOT NULL,
+  fee_config_id  BIGINT UNSIGNED DEFAULT NULL,
+  fee_name       VARCHAR(200)    NOT NULL, -- snapshot tên lúc tạo booking
+  fee_type       ENUM('platform','vat','service','other') NOT NULL,
+  rate_snapshot  DECIMAL(8,4)    DEFAULT NULL, -- % lưu lại tại thời điểm booking
+  base_amount    DECIMAL(12,2)   NOT NULL,
+  fee_amount     DECIMAL(12,2)   NOT NULL,
+  charged_to     ENUM('customer','partner') NOT NULL,
+  created_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_bf_booking      (booking_id),
+  KEY idx_bf_type_charged (fee_type, charged_to),
+  CONSTRAINT fk_bf_booking     FOREIGN KEY (booking_id)    REFERENCES bookings             (id) ON DELETE CASCADE,
+  CONSTRAINT fk_bf_fee_config  FOREIGN KEY (fee_config_id) REFERENCES platform_fee_configs (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+
+-- Bổ sung 2 cột tổng hợp fee (denormalized) vào bookings
+-- Tránh phải JOIN booking_fees mỗi lần query
+ALTER TABLE bookings
+  ADD COLUMN platform_fee_amount   DECIMAL(12,2) NOT NULL DEFAULT 0.00
+    COMMENT 'Tổng phí nền tảng, denorm từ booking_fees'
+    AFTER tax_amount,
+  ADD COLUMN partner_payout_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00
+    COMMENT 'Số đối tác nhận = total - platform_fee - tax'
+    AFTER platform_fee_amount;
+    
+    -- 1. Bảng lưu trữ các cấu hình luật đánh giá rủi ro (Nên có để dễ dàng bật/tắt/thay đổi trọng số)
+CREATE TABLE risk_rules (
+  id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  rule_code    VARCHAR(100)    NOT NULL, -- VD: 'MULTIPLE_FAILED_PAYMENTS', 'IP_BLACKLISTED'
+  name         VARCHAR(255)    NOT NULL,
+  description  TEXT            DEFAULT NULL,
+  risk_weight  DECIMAL(5,2)    NOT NULL DEFAULT 10.00, -- Điểm rủi ro cộng thêm nếu vi phạm
+  is_active    TINYINT(1)      NOT NULL DEFAULT 1,
+  created_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_risk_rule_code (rule_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 2. Bảng lưu trữ lịch sử đánh giá rủi ro trên từng giao dịch
+CREATE TABLE risk_assessments (
+  id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  payment_id      BIGINT UNSIGNED NOT NULL, -- Map với transaction_id của bạn
+  booking_id      BIGINT UNSIGNED NOT NULL, -- Lưu thêm context của booking
+  user_id         BIGINT UNSIGNED NOT NULL, -- Người thực hiện giao dịch
+  risk_score      DECIMAL(5,2)    NOT NULL DEFAULT 0.00,
+  decision        ENUM('approve', 'review', 'reject') NOT NULL DEFAULT 'review',
+  triggered_rules JSON            DEFAULT NULL, -- Lưu snapshot mảng các rule_code đã vi phạm
+  reviewed_by     BIGINT UNSIGNED DEFAULT NULL, -- Admin/Nhân viên duyệt thủ công nếu rơi vào trạng thái 'review'
+  reviewed_at     DATETIME        DEFAULT NULL,
+  notes           TEXT            DEFAULT NULL, -- Ghi chú của admin khi duyệt
+  created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_risk_payment (payment_id),
+  KEY idx_risk_decision (decision, risk_score),
+  KEY idx_risk_user (user_id),
+  CONSTRAINT fk_risk_payment  FOREIGN KEY (payment_id)  REFERENCES payments (id) ON DELETE CASCADE,
+  CONSTRAINT fk_risk_booking  FOREIGN KEY (booking_id)  REFERENCES bookings (id) ON DELETE CASCADE,
+  CONSTRAINT fk_risk_user     FOREIGN KEY (user_id)     REFERENCES users (id),
+  CONSTRAINT fk_risk_reviewer FOREIGN KEY (reviewed_by) REFERENCES users (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -613,19 +613,17 @@ CREATE TABLE booking_fees (
   KEY idx_bf_type_charged (fee_type, charged_to),
   CONSTRAINT fk_bf_booking     FOREIGN KEY (booking_id)    REFERENCES bookings             (id) ON DELETE CASCADE,
   CONSTRAINT fk_bf_fee_config  FOREIGN KEY (fee_config_id) REFERENCES platform_fee_configs (id) ON DELETE SET NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 -- Bổ sung 2 cột tổng hợp fee (denormalized) vào bookings
--- Tránh phải JOIN booking_fees mỗi lần query
+-- Kết quả thực tế đã verify: tax_amount(12) → total_amount(13) → platform_fee_amount(14) → partner_payout_amount(15)
 ALTER TABLE bookings
   ADD COLUMN platform_fee_amount   DECIMAL(12,2) NOT NULL DEFAULT 0.00
     COMMENT 'Tổng phí nền tảng, denorm từ booking_fees'
-    AFTER tax_amount,
+    AFTER total_amount,
   ADD COLUMN partner_payout_amount DECIMAL(12,2) NOT NULL DEFAULT 0.00
     COMMENT 'Số đối tác nhận = total - platform_fee - tax'
     AFTER platform_fee_amount;
-    
-    -- 1. Bảng lưu trữ các cấu hình luật đánh giá rủi ro (Nên có để dễ dàng bật/tắt/thay đổi trọng số)
+
 CREATE TABLE risk_rules (
   id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   rule_code    VARCHAR(100)    NOT NULL, -- VD: 'MULTIPLE_FAILED_PAYMENTS', 'IP_BLACKLISTED'
@@ -639,26 +637,80 @@ CREATE TABLE risk_rules (
   UNIQUE KEY uq_risk_rule_code (rule_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 2. Bảng lưu trữ lịch sử đánh giá rủi ro trên từng giao dịch
 CREATE TABLE risk_assessments (
   id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  payment_id      BIGINT UNSIGNED NOT NULL, -- Map với transaction_id của bạn
-  booking_id      BIGINT UNSIGNED NOT NULL, -- Lưu thêm context của booking
+  payment_id      BIGINT UNSIGNED NOT NULL, -- 1 payment = 1 assessment (UNIQUE)
+  booking_id      BIGINT UNSIGNED NOT NULL, -- Lưu context của booking
   user_id         BIGINT UNSIGNED NOT NULL, -- Người thực hiện giao dịch
   risk_score      DECIMAL(5,2)    NOT NULL DEFAULT 0.00,
-  decision        ENUM('approve', 'review', 'reject') NOT NULL DEFAULT 'review',
-  triggered_rules JSON            DEFAULT NULL, -- Lưu snapshot mảng các rule_code đã vi phạm
-  reviewed_by     BIGINT UNSIGNED DEFAULT NULL, -- Admin/Nhân viên duyệt thủ công nếu rơi vào trạng thái 'review'
+  decision        ENUM('approve','flagged','review','reject') NOT NULL DEFAULT 'flagged',
+                    -- flagged = system auto-detect, chưa assign agent
+                    -- review  = đã assign, agent đang xử lý thủ công
+                    -- approve / reject = kết quả cuối
+  triggered_rules JSON            DEFAULT NULL, -- snapshot ["RULE_A","RULE_B"]
+  reviewed_by     BIGINT UNSIGNED DEFAULT NULL, -- Admin/Agent duyệt thủ công
   reviewed_at     DATETIME        DEFAULT NULL,
-  notes           TEXT            DEFAULT NULL, -- Ghi chú của admin khi duyệt
+  notes           TEXT            DEFAULT NULL,
   created_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
-  UNIQUE KEY uq_risk_payment (payment_id),
-  KEY idx_risk_decision (decision, risk_score),
-  KEY idx_risk_user (user_id),
+  UNIQUE KEY uq_risk_payment   (payment_id),
+  KEY idx_risk_decision        (decision, risk_score),
+  KEY idx_risk_user            (user_id),
   CONSTRAINT fk_risk_payment  FOREIGN KEY (payment_id)  REFERENCES payments (id) ON DELETE CASCADE,
   CONSTRAINT fk_risk_booking  FOREIGN KEY (booking_id)  REFERENCES bookings (id) ON DELETE CASCADE,
-  CONSTRAINT fk_risk_user     FOREIGN KEY (user_id)     REFERENCES users (id),
-  CONSTRAINT fk_risk_reviewer FOREIGN KEY (reviewed_by) REFERENCES users (id) ON DELETE SET NULL
+  CONSTRAINT fk_risk_user     FOREIGN KEY (user_id)     REFERENCES users    (id),
+  CONSTRAINT fk_risk_reviewer FOREIGN KEY (reviewed_by) REFERENCES users    (id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE booking_guests (
+  id             BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  booking_id     BIGINT UNSIGNED NOT NULL,
+  full_name      VARCHAR(255)    NOT NULL,
+  id_card_number VARCHAR(50)     DEFAULT NULL,
+  date_of_birth  DATE            DEFAULT NULL,
+  nationality    CHAR(2)         DEFAULT NULL,
+  is_primary     TINYINT(1)      NOT NULL DEFAULT 0, -- 1 = khách đặt chính
+  created_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at     DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_bg_booking (booking_id),
+  CONSTRAINT fk_bg_booking FOREIGN KEY (booking_id) REFERENCES bookings (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE review_media (
+  id            BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
+  review_id     BIGINT UNSIGNED  NOT NULL,
+  media_type    ENUM('image','video') NOT NULL DEFAULT 'image',
+  url           VARCHAR(500)     NOT NULL,
+  thumbnail_url VARCHAR(500)     DEFAULT NULL,
+  sort_order    TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  created_at    DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_rm_review (review_id),
+  CONSTRAINT fk_rm_review FOREIGN KEY (review_id) REFERENCES reviews (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE disputes (
+  id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  booking_id   BIGINT UNSIGNED NOT NULL,
+  raised_by    BIGINT UNSIGNED NOT NULL, -- khách hoặc đối tác
+  dispute_type ENUM('cancellation','refund','property_issue','no_show','other') NOT NULL,
+  description  TEXT            NOT NULL,
+  status       ENUM('open','under_review','resolved','closed') NOT NULL DEFAULT 'open',
+  resolution   TEXT            DEFAULT NULL, -- kết quả phán quyết
+  resolved_by  BIGINT UNSIGNED DEFAULT NULL,
+  resolved_at  DATETIME        DEFAULT NULL,
+  created_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at   DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_dispute_booking (booking_id),
+  KEY idx_dispute_status  (status),
+  CONSTRAINT fk_dispute_booking  FOREIGN KEY (booking_id)  REFERENCES bookings (id),
+  CONSTRAINT fk_dispute_raised   FOREIGN KEY (raised_by)   REFERENCES users    (id),
+  CONSTRAINT fk_dispute_resolver FOREIGN KEY (resolved_by) REFERENCES users    (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- Đổi tên cho rõ vai trò: đây là sổ cái lịch sử, không phải balance
+-- Balance thực tế đã được denorm tại customer_profiles.loyalty_points_balance
+RENAME TABLE loyalty_points TO loyalty_point_ledger;
+

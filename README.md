@@ -1,4 +1,4 @@
-# 🏨 HỆ THỐNG ĐẶT PHÒNG TRỰC TUYẾN NOWAYHOME.
+# 🏨 HỆ THỐNG ĐẶT PHÒNG TRỰC TUYẾN NOWAYHOME
 
 **Tổ chức:** NoWayHomee
 **Tài liệu:** Thiết kế Kiến trúc, Logic xử lý và Cơ sở dữ liệu

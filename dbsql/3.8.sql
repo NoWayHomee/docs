@@ -817,4 +817,51 @@ ALTER TABLE properties
 ADD INDEX idx_prop_rating (status, avg_rating),
 ADD INDEX idx_prop_location (latitude, longitude);
 
+-- Thêm các cột mới vào bảng property_policies
+ALTER TABLE property_policies
+-- 1. Nhận / Trả phòng nâng cao (Check-in / Check-out)
+ADD COLUMN check_out_from TIME DEFAULT '00:00:00' AFTER check_in_until,
+ADD COLUMN early_check_in_allowed TINYINT(1) NOT NULL DEFAULT 0,
+ADD COLUMN early_check_in_fee DECIMAL(12,2) DEFAULT NULL COMMENT 'Phụ phí nhận phòng sớm (VNĐ)',
+ADD COLUMN late_check_out_allowed TINYINT(1) NOT NULL DEFAULT 0,
+ADD COLUMN late_check_out_fee DECIMAL(12,2) DEFAULT NULL COMMENT 'Phụ phí trả phòng muộn (VNĐ)',
+-- 2. Trẻ em (Cụ thể hóa độ tuổi)
+ADD COLUMN min_child_age TINYINT UNSIGNED DEFAULT 0 COMMENT 'Độ tuổi tối thiểu được lưu trú',
+ADD COLUMN infant_0_4_fee DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'Phụ thu trẻ 0-4t',
+ADD COLUMN free_baby_cot TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Hỗ trợ nôi/cũi miễn phí',
+ADD COLUMN child_5_11_fee DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'Phụ thu trẻ 5-11t',
+ADD COLUMN child_5_11_must_use_extra_bed TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Trẻ 5-11t bắt buộc dùng giường phụ',
+-- 3. Vắng mặt (No-show)
+ADD COLUMN no_show_penalty_type ENUM('full_amount','first_night','percent') NOT NULL DEFAULT 'full_amount',
+ADD COLUMN no_show_penalty_value DECIMAL(12,2) DEFAULT NULL COMMENT 'Giá trị phạt tương ứng với type',
+-- 4. Đặt phòng & Thanh toán
+ADD COLUMN instant_confirmation TINYINT(1) NOT NULL DEFAULT 1 COMMENT '1: Tự động duyệt, 0: Host phải duyệt',
+ADD COLUMN deposit_required TINYINT(1) NOT NULL DEFAULT 0,
+ADD COLUMN deposit_type ENUM('percent','fixed_amount') DEFAULT NULL,
+ADD COLUMN deposit_value DECIMAL(12,2) DEFAULT NULL,
+ADD COLUMN deposit_days_before SMALLINT UNSIGNED DEFAULT NULL COMMENT 'Số ngày phải cọc trước khi check-in',
+ADD COLUMN accepted_payment_methods JSON DEFAULT NULL COMMENT 'Mảng: ["cash", "credit_card", "transfer"]',
+-- 5. Khách lưu trú
+ADD COLUMN extra_person_fee DECIMAL(12,2) DEFAULT NULL COMMENT 'Phụ phí thêm người (vượt tiêu chuẩn)',
+-- 6. Dịch vụ & Tiện ích (Bổ sung phần phí)
+ADD COLUMN wifi_fee DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+ADD COLUMN breakfast_included TINYINT(1) NOT NULL DEFAULT 0,
+ADD COLUMN breakfast_fee DECIMAL(12,2) DEFAULT NULL,
+ADD COLUMN airport_shuttle_available TINYINT(1) NOT NULL DEFAULT 0,
+ADD COLUMN airport_shuttle_fee DECIMAL(12,2) DEFAULT NULL,
+ADD COLUMN parking_type ENUM('free','paid','none') NOT NULL DEFAULT 'none',
+ADD COLUMN parking_fee DECIMAL(12,2) DEFAULT NULL,
+-- 7. Quy định Hành vi (House Rules)
+ADD COLUMN smoking_penalty DECIMAL(12,2) DEFAULT NULL COMMENT 'Phạt hút thuốc sai quy định',
+ADD COLUMN pet_fee DECIMAL(12,2) DEFAULT NULL COMMENT 'Phí mang thú cưng',
+ADD COLUMN pet_max_weight_kg DECIMAL(5,2) DEFAULT NULL COMMENT 'Cân nặng tối đa của thú cưng',
+ADD COLUMN parties_allowed TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Cho phép tổ chức tiệc',
+ADD COLUMN quiet_hours_start TIME DEFAULT NULL COMMENT 'Giờ bắt đầu giữ yên lặng',
+ADD COLUMN quiet_hours_end TIME DEFAULT NULL COMMENT 'Giờ kết thúc giữ yên lặng',
+ADD COLUMN requires_marriage_certificate TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Cần giấy ĐKKH cho khách Việt - Ngoại',
+-- 8. Rủi ro & Bồi thường
+ADD COLUMN damage_deposit_required TINYINT(1) NOT NULL DEFAULT 0,
+ADD COLUMN damage_deposit_amount DECIMAL(12,2) DEFAULT NULL COMMENT 'Tiền cọc hư hỏng thu lúc check-in',
+ADD COLUMN liability_waiver TEXT DEFAULT NULL COMMENT 'Miễn trừ trách nhiệm tài sản',
+ADD COLUMN force_majeure_policy TEXT DEFAULT NULL COMMENT 'Chính sách bất khả kháng';
 SET FOREIGN_KEY_CHECKS = 1;
